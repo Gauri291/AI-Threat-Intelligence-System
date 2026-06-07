@@ -2,11 +2,20 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import json
+import time
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    print("[ERROR] GEMINI_API_KEY not found in .env file!")
+else:
+    print(f"[DEBUG] API Key found: {api_key[:10]}...")
+    genai.configure(api_key=api_key)
+
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
 SYSTEM_CONTEXT = """
 You are a Senior SOC (Security Operations Center) analyst.
 You receive structured network anomaly data and produce concise, actionable threat reports.
@@ -23,6 +32,8 @@ Always respond in valid JSON with this schema:
 """
 
 def analyse_incidents(anomaly_df, top_n=5):
+    """Analyze incidents using Gemini API with timeout"""
+    
     critical = anomaly_df[anomaly_df["severity"] == "CRITICAL"].head(top_n)
 
     if critical.empty:
@@ -51,11 +62,20 @@ Return ONLY the JSON object. No markdown, no explanation.
 """
 
     try:
-        # Add timeout handling to prevent indefinite hanging
+        print("[DEBUG] Sending request to Gemini API...")
+        print(f"[DEBUG] API Key configured: {bool(api_key)}")
+        
+        start_time = time.time()
+        
+        # Call with explicit timeout
         response = model.generate_content(
             prompt,
-            request_options={"timeout": 60}
+            request_options={"timeout": 30}  # 30 second timeout
         )
+        
+        elapsed = time.time() - start_time
+        print(f"[DEBUG] API response received in {elapsed:.2f}s")
+        print(f"[DEBUG] Response length: {len(response.text)} chars")
 
         raw = (
             response.text.strip()
@@ -64,25 +84,42 @@ Return ONLY the JSON object. No markdown, no explanation.
             .strip()
         )
 
-        return json.loads(raw), critical
+        parsed = json.loads(raw)
+        print("[DEBUG] JSON parsing successful")
+        return parsed, critical
         
     except json.JSONDecodeError as e:
-        print(f"JSON Parse Error: {e}")
+        print(f"[ERROR] JSON Parse Error: {str(e)}")
+        print(f"[DEBUG] Raw response: {response.text[:200]}")
         return {
             "executive_summary": "Analysis completed but response parsing failed.",
             "recommended_actions": ["Review incident manually", "Check API response format"],
             "confidence": "LOW",
-            "threat_name": "Unknown",
+            "threat_name": "Parse Error",
+            "attack_vector": "Unknown"
+        }, critical
+        
+    except TimeoutError as e:
+        print(f"[ERROR] API Timeout (30s exceeded): {str(e)}")
+        return {
+            "executive_summary": "Gemini API request timed out. Please check your connection or try again.",
+            "recommended_actions": ["Check internet connection", "Retry analysis", "Check Gemini quota"],
+            "confidence": "LOW",
+            "threat_name": "Timeout",
             "attack_vector": "Unknown"
         }, critical
         
     except Exception as e:
-        print(f"API Error: {str(e)}")
+        print(f"[ERROR] API Error: {type(e).__name__}: {str(e)}")
         return {
-            "executive_summary": f"API Error: {str(e)}",
-            "recommended_actions": ["Check API key", "Verify quota", "Retry analysis"],
+            "executive_summary": f"Gemini API Error: {str(e)}",
+            "recommended_actions": [
+                "Verify GEMINI_API_KEY in .env file",
+                "Check quota at https://aistudio.google.com/app/apikeys",
+                "Retry analysis"
+            ],
             "confidence": "LOW",
-            "threat_name": "Error",
+            "threat_name": "API Error",
             "attack_vector": "Unknown"
         }, critical
 
