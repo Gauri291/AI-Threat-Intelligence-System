@@ -50,22 +50,40 @@ Analyse these network anomalies detected by our ML system:
 Return ONLY the JSON object. No markdown, no explanation.
 """
 
-    response = model.generate_content(prompt)
-
-    raw = (
-        response.text.strip()
-        .replace("```json", "")
-        .replace("```", "")
-        .strip()
-    )
-
     try:
+        # Add timeout handling to prevent indefinite hanging
+        response = model.generate_content(
+            prompt,
+            request_options={"timeout": 60}
+        )
+
+        raw = (
+            response.text.strip()
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
         return json.loads(raw), critical
-    except json.JSONDecodeError:
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON Parse Error: {e}")
         return {
-            "executive_summary": raw,
-            "recommended_actions": [],
-            "confidence": "LOW"
+            "executive_summary": "Analysis completed but response parsing failed.",
+            "recommended_actions": ["Review incident manually", "Check API response format"],
+            "confidence": "LOW",
+            "threat_name": "Unknown",
+            "attack_vector": "Unknown"
+        }, critical
+        
+    except Exception as e:
+        print(f"API Error: {str(e)}")
+        return {
+            "executive_summary": f"API Error: {str(e)}",
+            "recommended_actions": ["Check API key", "Verify quota", "Retry analysis"],
+            "confidence": "LOW",
+            "threat_name": "Error",
+            "attack_vector": "Unknown"
         }, critical
 
 
