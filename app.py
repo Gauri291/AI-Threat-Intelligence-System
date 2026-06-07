@@ -132,47 +132,65 @@ st.dataframe(
 
 # AI Analysis
 if run_ai:
-    with st.spinner("Gemini is analysing threats..."):
-        analysis, incidents = analyse_incidents(anomalies)
+    try:
+        with st.spinner("🔍 Analyzing threats with Gemini AI... This may take 30-60 seconds."):
+            analysis, incidents = analyse_incidents(anomalies)
 
-    st.subheader("AI Threat Analysis")
+        # Check if analysis was successful
+        if analysis and "executive_summary" in analysis and analysis["executive_summary"]:
+            st.subheader("AI Threat Analysis")
 
-    st.info(
-        analysis.get(
-            "executive_summary",
-            "No summary available."
-        )
-    )
+            st.info(
+                analysis.get(
+                    "executive_summary",
+                    "No summary available."
+                )
+            )
 
-    col_x, col_y = st.columns(2)
+            col_x, col_y = st.columns(2)
 
-    with col_x:
-        st.markdown("### Recommended Actions")
+            with col_x:
+                st.markdown("### Recommended Actions")
 
-        for action in analysis.get(
-            "recommended_actions",
-            []
-        ):
-            st.markdown(f"- {action}")
+                for action in analysis.get(
+                    "recommended_actions",
+                    []
+                ):
+                    st.markdown(f"- {action}")
 
-    with col_y:
-        st.markdown(
-            f"**Confidence:** {analysis.get('confidence', 'N/A')}"
-        )
+            with col_y:
+                st.markdown(
+                    f"**Confidence:** {analysis.get('confidence', 'N/A')}"
+                )
 
-        st.markdown(
-            f"**Attack Vector:** {analysis.get('attack_vector', 'N/A')}"
-        )
+                st.markdown(
+                    f"**Attack Vector:** {analysis.get('attack_vector', 'N/A')}"
+                )
 
-    pdf_path = generate_pdf(
-        analysis,
-        len(anomalies)
-    )
+            try:
+                pdf_path = generate_pdf(
+                    analysis,
+                    len(anomalies)
+                )
 
-    with open(pdf_path, "rb") as f:
-        st.download_button(
-            label="Download Incident Report (PDF)",
-            data=f,
-            file_name="incident_report.pdf",
-            mime="application/pdf"
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        label="📥 Download Incident Report (PDF)",
+                        data=f,
+                        file_name="incident_report.pdf",
+                        mime="application/pdf"
+                    )
+            except Exception as pdf_error:
+                st.error(f"PDF generation failed: {str(pdf_error)}")
+        else:
+            st.warning("⚠️ Analysis returned empty results. Please retry.")
+
+    except Exception as e:
+        st.error(f"❌ Analysis failed: {str(e)}")
+        st.info(
+            "**Possible causes:**\n"
+            "- ❌ Gemini API key is invalid or missing\n"
+            "- ❌ API quota exceeded\n"
+            "- ❌ Network timeout (try again in a moment)\n"
+            "- ❌ Please verify your `.env` file has `GEMINI_API_KEY` set correctly"
         )
