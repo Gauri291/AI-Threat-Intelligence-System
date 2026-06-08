@@ -6,3 +6,4 @@ plotly
 google-generativeai
 python-dotenv
 fpdf2
+faker
