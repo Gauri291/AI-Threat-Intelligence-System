@@ -6,7 +6,9 @@ import json
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
 SYSTEM_CONTEXT = """
 You are a Senior SOC (Security Operations Center) analyst.
 You receive structured network anomaly data and produce concise, actionable threat reports.
@@ -22,22 +24,15 @@ Always respond in valid JSON with this schema:
 }
 """
 
-def analyse_incidents(anomaly_df, top_n=5):
+
+def analyse_incidents(anomaly_df, top_n=3):
     critical = anomaly_df[anomaly_df["severity"] == "CRITICAL"].head(top_n)
 
     if critical.empty:
         critical = anomaly_df[anomaly_df["predicted_anomaly"]].head(top_n)
 
     incidents_text = critical[
-        [
-            "timestamp",
-            "src_ip",
-            "dst_port",
-            "status_code",
-            "bytes_sent",
-            "request_count",
-            "anomaly_score",
-        ]
+        ["timestamp", "src_ip", "dst_port", "status_code", "anomaly_score"]
     ].to_string(index=False)
 
     prompt = f"""
@@ -51,10 +46,9 @@ Return ONLY the JSON object. No markdown, no explanation.
 """
 
     try:
-        # Add timeout handling to prevent indefinite hanging
         response = model.generate_content(
             prompt,
-            request_options={"timeout": 60}
+            request_options={"timeout": 20}
         )
 
         raw = (
@@ -65,22 +59,27 @@ Return ONLY the JSON object. No markdown, no explanation.
         )
 
         return json.loads(raw), critical
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON Parse Error: {e}")
+
+    except json.JSONDecodeError:
         return {
             "executive_summary": "Analysis completed but response parsing failed.",
-            "recommended_actions": ["Review incident manually", "Check API response format"],
+            "recommended_actions": [
+                "Review incident manually",
+                "Check API response format"
+            ],
             "confidence": "LOW",
             "threat_name": "Unknown",
             "attack_vector": "Unknown"
         }, critical
-        
+
     except Exception as e:
-        print(f"API Error: {str(e)}")
         return {
             "executive_summary": f"API Error: {str(e)}",
-            "recommended_actions": ["Check API key", "Verify quota", "Retry analysis"],
+            "recommended_actions": [
+                "Check API key",
+                "Verify API quota",
+                "Retry analysis"
+            ],
             "confidence": "LOW",
             "threat_name": "Error",
             "attack_vector": "Unknown"
